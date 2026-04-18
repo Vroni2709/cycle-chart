@@ -1,0 +1,105 @@
+name: Fetch Notion Cycle Data
+
+on:
+  schedule:
+    - cron: '0 * * * *'   # every hour
+  workflow_dispatch:        # also allows manual trigger from GitHub UI
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Fetch from Notion and save JSON
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          DATABASE_ID: a1b7818c3d134a29b5bd7e52701bdfcc
+        run: |
+          python3 - <<'EOF'
+          import urllib.request
+          import json
+          import os
+
+          token       = os.environ["NOTION_TOKEN"]
+          database_id = os.environ["DATABASE_ID"]
+          url         = f"https://api.notion.com/v1/databases/{database_id}/query"
+          headers     = {
+              "Authorization": f"Bearer {token}",
+              "Notion-Version": "2022-06-28",
+              "Content-Type": "application/json",
+          }
+
+          all_results = []
+          body        = {"page_size": 100}
+
+          while True:
+              req  = urllib.request.Request(url, data=json.dumps(body).encode(), headers=headers, method="POST")
+              resp = urllib.request.urlopen(req)
+              data = json.loads(resp.read())
+              all_results.extend(data.get("results", []))
+              if not data.get("has_more"):
+                  break
+              body["start_cursor"] = data["next_cursor"]
+
+          entries = []
+          for page in all_results:
+              props = page.get("properties", {})
+
+              def get_number(name):
+                  p = props.get(name, {})
+                  return p.get("number") if p.get("type") == "number" else None
+
+              def get_text(name):
+                  p = props.get(name, {})
+                  if p.get("type") == "rich_text":
+                      parts = p.get("rich_text", [])
+                      return parts[0]["plain_text"].strip() if parts else None
+                  if p.get("type") == "title":
+                      parts = p.get("title", [])
+                      return parts[0]["plain_text"].strip() if parts else None
+                  return None
+
+              cycle_no  = get_text("Cycle No.")
+              cycle_day = get_number("Cycle Day")
+              temp      = get_number("Temperature (°C)")
+
+              if cycle_no and cycle_day is not None and temp is not None:
+                  entries.append({"cycle_no": cycle_no, "cycle_day": cycle_day, "temp": temp})
+
+          cycles = {}
+          for e in entries:
+              cn = e["cycle_no"]
+              if cn not in cycles:
+                  cycles[cn] = {}
+              cycles[cn][str(int(e["cycle_day"]))] = e["temp"]
+
+          sorted_nums = sorted(cycles.keys(), key=lambda x: float(x), reverse=True)
+          top3        = sorted_nums[:3]
+          output      = {cn: cycles[cn] for cn in top3}
+
+          import datetime
+          result = {
+              "updated":    datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "top_cycles": top3,
+              "data":       output,
+          }
+
+          os.makedirs("docs", exist_ok=True)
+          with open("docs/cycle-data.json", "w") as f:
+              json.dump(result, f, indent=2)
+
+          print(f"Saved {len(entries)} entries across cycles: {top3}")
+          EOF
+
+      - name: Commit and push updated data
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/cycle-data.json
+          git diff --cached --quiet || git commit -m "chore: refresh cycle data $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git push
