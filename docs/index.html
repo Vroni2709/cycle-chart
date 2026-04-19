@@ -66,9 +66,9 @@
 
 <script>
 const COLORS = [
-  { line: '#8b6f9e', dot: '#8b6f9e', soft: 'rgba(139,111,158,0.10)', cls: 'c1' },
-  { line: '#4a9e7f', dot: '#4a9e7f', soft: 'rgba(74,158,127,0.08)',  cls: 'c2' },
-  { line: '#c4734a', dot: '#c4734a', soft: 'rgba(196,115,74,0.08)',  cls: 'c3' },
+  { line: '#8b6f9e', soft: 'rgba(139,111,158,0.10)', cls: 'c1' },
+  { line: '#4a9e7f', soft: 'rgba(74,158,127,0.08)',  cls: 'c2' },
+  { line: '#c4734a', soft: 'rgba(196,115,74,0.08)',  cls: 'c3' },
 ];
 const EHM_COLOR = '#e8c84a', EHM_BORDER = '#c4a430';
 const DATA_POLL_MS = 30000;
@@ -85,7 +85,6 @@ function buildLegend(cycleNums, ehmData) {
     item.className = 'legend-item';
     item.innerHTML = `<svg width="32" height="12" viewBox="0 0 32 12">
       <line x1="0" y1="6" x2="32" y2="6" stroke="${col.line}" stroke-width="${i===0?2.5:2}"/>
-      <circle cx="16" cy="6" r="3.5" fill="${col.dot}" stroke="white" stroke-width="1.5"/>
     </svg><span>cycle ${cn}${i===0?' (latest)':''}</span>`;
     leg.appendChild(item);
   });
@@ -128,32 +127,12 @@ const ehmPlugin = (ehmData, cycleNums, labels) => ({
   }
 });
 
-const lowTempPlugin = (coverline) => ({
-  id: 'lowTempShade',
-  beforeDraw(chart) {
-    const ctx = chart.ctx, xA = chart.scales.x, yA = chart.scales.y;
-    const y = yA.getPixelForValue(coverline);
-    if (y > yA.bottom) return;
-    ctx.save();
-    const grad = ctx.createLinearGradient(0, y, 0, yA.bottom);
-    grad.addColorStop(0, 'rgba(196,115,74,0.06)');
-    grad.addColorStop(1, 'rgba(196,115,74,0.16)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(xA.left, y, xA.right - xA.left, yA.bottom - y);
-    ctx.strokeStyle = 'rgba(196,115,74,0.35)';
-    ctx.lineWidth = 1; ctx.setLineDash([5,4]);
-    ctx.beginPath(); ctx.moveTo(xA.left, y); ctx.lineTo(xA.right, y); ctx.stroke();
-    ctx.restore();
-  }
-});
 
 function buildChart(data, cycleNums, ehmData) {
   const maxDay = Math.max(...cycleNums.flatMap(cn => Object.keys(data[cn]).map(Number)));
   const labels = Array.from({length: maxDay}, (_, i) => i + 1);
   const allTemps = cycleNums.flatMap(cn => Object.values(data[cn]));
   const minT = Math.min(...allTemps), maxT = Math.max(...allTemps);
-  const coverline = parseFloat((minT + (maxT - minT) * 0.28).toFixed(2));
-
   const datasets = cycleNums.map((cn, i) => {
     const col = COLORS[i];
     return {
@@ -162,12 +141,12 @@ function buildChart(data, cycleNums, ehmData) {
       borderColor: col.line,
       backgroundColor: col.soft,
       borderWidth: i === 0 ? 2.5 : 2,
-      pointRadius: labels.map(d => { const v = data[cn][String(d)]; return (v!=null && v<=coverline) ? 5.5 : 3.5; }),
-      pointHoverRadius: 7,
-      pointBackgroundColor: labels.map(d => { const v = data[cn][String(d)]; return (v!=null && v<=coverline) ? col.line : col.dot; }),
-      pointBorderColor: labels.map(d => { const v = data[cn][String(d)]; return (v!=null && v<=coverline) ? 'rgba(0,0,0,0.25)' : 'white'; }),
-      pointBorderWidth: labels.map(d => { const v = data[cn][String(d)]; return (v!=null && v<=coverline) ? 2 : 1.5; }),
-      tension: 0.35, fill: false, borderDash: [], spanGaps: true,
+      pointRadius: 0,
+      pointHoverRadius: 6,
+      pointHoverBackgroundColor: col.line,
+      pointHoverBorderColor: 'white',
+      pointHoverBorderWidth: 2,
+      tension: 0.35, fill: false, borderDash: [], spanGaps: false,
     };
   });
 
@@ -175,7 +154,7 @@ function buildChart(data, cycleNums, ehmData) {
   chartInstance = new Chart(document.getElementById('chart'), {
     type: 'line',
     data: { labels, datasets },
-    plugins: [lowTempPlugin(coverline), ehmPlugin(ehmData, cycleNums, labels)],
+    plugins: [ehmPlugin(ehmData, cycleNums, labels)],
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
