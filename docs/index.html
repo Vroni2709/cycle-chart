@@ -180,7 +180,7 @@ function buildChart(data, cycleNums, ehmData) {
       scales: {
         x: {
           title: { display: true, text: 'cycle day', color: '#b0a89e', font: { family: "'DM Mono', monospace", size: 11 }, padding: { top: 8 } },
-          ticks: { color: '#b0a89e', font: { family: "'DM Mono', monospace", size: 10 }, autoSkip: false, maxRotation: 0, callback: (_, i) => (i+1)%2===1 ? i+1 : '' },
+          ticks: { color: '#b0a89e', font: { family: "'DM Mono', monospace", size: 10 }, autoSkip: false, maxRotation: 0, callback: (_, i) => i+1 },
           grid: { color: 'rgba(0,0,0,0.04)' },
         },
         y: {
