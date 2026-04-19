@@ -71,6 +71,10 @@ const COLORS = [
   { line: '#c4734a', dot: '#c4734a', soft: 'rgba(196,115,74,0.08)',  cls: 'c3' },
 ];
 const EHM_COLOR = '#e8c84a', EHM_BORDER = '#c4a430';
+const DATA_POLL_MS = 30000;
+let chartInstance = null;
+let lastUpdated = null;
+let hasLoaded = false;
 
 function buildLegend(cycleNums, ehmData) {
   const leg = document.getElementById('legend');
@@ -167,7 +171,8 @@ function buildChart(data, cycleNums, ehmData) {
     };
   });
 
-  new Chart(document.getElementById('chart'), {
+  if (chartInstance) chartInstance.destroy();
+  chartInstance = new Chart(document.getElementById('chart'), {
     type: 'line',
     data: { labels, datasets },
     plugins: [lowTempPlugin(coverline), ehmPlugin(ehmData, cycleNums, labels)],
@@ -232,26 +237,33 @@ function buildStats(data, cycleNums, ehmData) {
 
 async function main() {
   try {
-    const res = await fetch('cycle-data.json');
+    const res = await fetch(`cycle-data.json?v=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) throw new Error(`Could not load cycle-data.json (${res.status}). Has the GitHub Action run yet?`);
     const json = await res.json();
+    if (json.updated && json.updated === lastUpdated) return;
+    lastUpdated = json.updated || null;
+
     const cycleNums = json.top_cycles, data = json.data, ehmData = json.ehm || {};
     document.getElementById('loading').style.display = 'none';
+    document.getElementById('error').style.display = 'none';
     document.getElementById('chart-area').style.display = 'block';
     buildLegend(cycleNums, ehmData);
     buildChart(data, cycleNums, ehmData);
     buildStats(data, cycleNums, ehmData);
+    hasLoaded = true;
     if (json.updated) {
       const d = new Date(json.updated);
       document.getElementById('updated-time').textContent = `data refreshed ${d.toLocaleString('de-DE', {dateStyle:'medium',timeStyle:'short'})}`;
     }
   } catch (err) {
+    if (hasLoaded) return;
     document.getElementById('loading').style.display = 'none';
     document.getElementById('error').style.display = 'block';
     document.getElementById('error').innerHTML = `<strong>Could not load data</strong>${err.message}`;
   }
 }
 main();
+setInterval(main, DATA_POLL_MS);
 </script>
 </body>
 </html>
