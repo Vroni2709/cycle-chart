@@ -49,7 +49,7 @@
 <body>
 <div class="header">
   <h1>ehM <em>cycle day</em></h1>
-  <p class="subtitle">comparison by cycle no.</p>
+  <p class="subtitle">all cycles — oldest to newest</p>
 </div>
 <div class="legend">
   <div class="legend-item"><div class="ehm-dot-legend"></div><span>checked ehM day</span></div>
@@ -157,15 +157,15 @@ function buildChart(cycleNums, ehmData) {
 
 function buildStats(cycleNums, ehmData) {
   const grid = document.getElementById('stats-grid');
-  const cyclesWithEhm = cycleNums.filter(cn => (ehmData[cn] || []).length > 0).slice().reverse();
+  const cyclesWithEhm = cycleNums.filter(cn => (ehmData[cn] || []).length > 0);
   grid.innerHTML = '';
   grid.style.display = 'grid';
-  cyclesWithEhm.slice(0, 6).forEach((cn, i) => {
+  cyclesWithEhm.forEach((cn, i) => {
     const ehmDays = (ehmData[cn] || []).slice().sort((a, b) => a - b);
     const card = document.createElement('div');
     card.className = `stat-card ${CARD_CLASSES[i % CARD_CLASSES.length]}`;
     card.innerHTML = `
-      <p class="stat-label">${i === 0 ? 'latest checked' : 'previous'}</p>
+      <p class="stat-label">${i === 0 ? 'oldest checked' : 'checked'}</p>
       <p class="stat-cycle">cycle ${cn}</p>
       <p class="stat-temps">ehM checked on day ${ehmDays.join(', ')}</p>`;
     grid.appendChild(card);
