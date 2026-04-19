@@ -69,12 +69,17 @@ Keep the folder structure intact — `.github/workflows/` must stay nested.
 
 ### Step 8 — View your chart
 
-Your chart is now live at:
+Your comparison chart is now live at:
 ```
 https://YOUR-GITHUB-USERNAME.github.io/YOUR-REPO-NAME/
 ```
 
-Copy that URL and paste it into a Notion page using `/embed`.
+Your latest-cycle-only chart is live at:
+```
+https://YOUR-GITHUB-USERNAME.github.io/YOUR-REPO-NAME/latest.html
+```
+
+Copy either URL and paste it into a Notion page using `/embed`.
 
 The chart checks for fresh `cycle-data.json` every 30 seconds while the embed is open, using a cache-busting request. After the GitHub Action finishes, the Notion embed should update without changing the embed link.
 
@@ -85,6 +90,7 @@ The chart checks for fresh `cycle-data.json` every 30 seconds while the embed is
 - You run the GitHub Action manually when you want fresh data.
 - GitHub Actions fetches your Notion database and saves the top 3 cycles as `docs/cycle-data.json`.
 - The chart page (`docs/index.html`) reads that JSON file — no Notion API calls from the browser, no CORS issues.
+- The latest-cycle page (`docs/latest.html`) uses the same JSON file, but only renders the newest cycle.
 - While the chart is open in Notion, it checks for an updated JSON file every 30 seconds.
 
 ## Refresh Button Notes
