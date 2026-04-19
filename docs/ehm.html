@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ehM Cycle Day Comparison</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #faf8f5; --surface: #ffffff; --border: #e8e2da;
+    --text-primary: #1a1510; --text-secondary: #7a6f63; --text-muted: #b0a89e;
+    --accent-1: #8b6f9e; --accent-2: #4a9e7f; --accent-3: #c4734a;
+    --accent-1-soft: rgba(139,111,158,0.12); --accent-2-soft: rgba(74,158,127,0.12); --accent-3-soft: rgba(196,115,74,0.12);
+    --ehm: #e8c84a; --ehm-border: #c4a430; --radius: 16px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Mono', monospace; background: var(--bg); color: var(--text-primary); min-height: 100vh; padding: 2rem 1.5rem; }
+  .header { text-align: center; margin-bottom: 2rem; }
+  .header h1 { font-family: 'DM Serif Display', serif; font-size: clamp(1.4rem, 4vw, 2.2rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.1; }
+  .header h1 em { font-style: italic; color: var(--accent-1); }
+  .subtitle { font-size: 0.72rem; color: var(--text-muted); margin-top: 0.4rem; letter-spacing: 0.08em; text-transform: uppercase; }
+  .legend { display: flex; justify-content: center; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1.5rem; align-items: center; }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.7rem; color: var(--text-secondary); letter-spacing: 0.04em; }
+  .ehm-dot-legend { width: 10px; height: 10px; border-radius: 50%; background: var(--ehm); border: 2px solid var(--ehm-border); flex-shrink: 0; }
+  .chart-container { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem 1.5rem 1rem; }
+  .chart-wrap { position: relative; height: 400px; }
+  .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-top: 1rem; }
+  .stat-card { border-radius: 10px; padding: 0.875rem 1rem; border: 1px solid transparent; }
+  .stat-card.c1 { background: var(--accent-1-soft); border-color: rgba(139,111,158,0.2); }
+  .stat-card.c2 { background: var(--accent-2-soft); border-color: rgba(74,158,127,0.2); }
+  .stat-card.c3 { background: var(--accent-3-soft); border-color: rgba(196,115,74,0.2); }
+  .stat-label { font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px; }
+  .stat-cycle { font-family: 'DM Serif Display', serif; font-size: 1.05rem; font-weight: 400; margin-bottom: 4px; }
+  .stat-card.c1 .stat-cycle { color: var(--accent-1); }
+  .stat-card.c2 .stat-cycle { color: var(--accent-2); }
+  .stat-card.c3 .stat-cycle { color: var(--accent-3); }
+  .stat-temps { font-size: 0.68rem; color: var(--text-secondary); line-height: 1.6; }
+  .loading { text-align: center; padding: 4rem 2rem; color: var(--text-muted); font-size: 0.8rem; letter-spacing: 0.06em; }
+  .loading-dots::after { content: ''; animation: dots 1.5s infinite; }
+  @keyframes dots { 0%{content:'.'} 33%{content:'..'} 66%{content:'...'} 100%{content:''} }
+  .error { background: #fff5f5; border: 1px solid #fca5a5; border-radius: 10px; padding: 1.25rem; font-size: 0.78rem; color: #c4574a; line-height: 1.7; }
+  .error strong { display: block; margin-bottom: 0.4rem; }
+  .updated { font-size: 0.62rem; color: var(--text-muted); text-align: right; margin-top: 0.75rem; letter-spacing: 0.04em; }
+  @media (max-width: 480px) { .stats-grid { grid-template-columns: 1fr; } .legend { gap: 0.75rem; } }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>ehM <em>cycle day</em></h1>
+  <p class="subtitle">comparison by cycle no.</p>
+</div>
+<div class="legend">
+  <div class="legend-item"><div class="ehm-dot-legend"></div><span>checked ehM day</span></div>
+</div>
+<div class="chart-container">
+  <div id="loading" class="loading"><span class="loading-dots">loading</span></div>
+  <div id="error" style="display:none" class="error"></div>
+  <div id="chart-area" style="display:none">
+    <div class="chart-wrap">
+      <canvas id="chart" role="img" aria-label="ehM checked cycle day by cycle number"></canvas>
+    </div>
+  </div>
+</div>
+<div id="stats-grid" class="stats-grid" style="display:none"></div>
+<p class="updated" id="updated-time"></p>
+
+<script>
+const DATA_POLL_MS = 30000;
+const EHM_COLOR = '#e8c84a', EHM_BORDER = '#c4a430';
+const CARD_CLASSES = ['c1', 'c2', 'c3'];
+let chartInstance = null;
+let lastUpdated = null;
+let hasLoaded = false;
+
+function sortedCycleNums(json) {
+  const cycles = json.all_cycles || Object.keys(json.all_ehm || json.ehm || {});
+  return cycles.slice().sort((a, b) => Number(a) - Number(b));
+}
+
+function ehmByCycle(json) {
+  return json.all_ehm || json.ehm || {};
+}
+
+function buildChart(cycleNums, ehmData) {
+  const points = cycleNums.flatMap(cn => (ehmData[cn] || []).map(day => ({
+    x: cn,
+    y: day,
+    cycle: cn,
+  })));
+
+  if (points.length === 0) {
+    throw new Error('No checked ehM days found yet.');
+  }
+
+  const allDays = points.map(point => point.y);
+  const minDay = Math.max(1, Math.min(...allDays) - 2);
+  const maxDay = Math.max(...allDays) + 2;
+
+  if (chartInstance) chartInstance.destroy();
+  chartInstance = new Chart(document.getElementById('chart'), {
+    type: 'scatter',
+    data: {
+      labels: cycleNums,
+      datasets: [{
+        label: 'ehM day',
+        data: points,
+        showLine: true,
+        borderColor: '#8b6f9e',
+        backgroundColor: 'rgba(139,111,158,0.08)',
+        borderWidth: 2,
+        tension: 0.25,
+        pointRadius: 6,
+        pointHoverRadius: 8,
+        pointBackgroundColor: EHM_COLOR,
+        pointBorderColor: EHM_BORDER,
+        pointBorderWidth: 2,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      parsing: false,
+      interaction: { mode: 'nearest', intersect: true },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1a1510', titleColor: '#faf8f5', bodyColor: '#c8bcb0',
+          padding: 12,
+          titleFont: { family: "'DM Mono', monospace", size: 11 },
+          bodyFont: { family: "'DM Mono', monospace", size: 11 },
+          callbacks: {
+            title: ctx => `cycle ${ctx[0].raw.cycle}`,
+            label: ctx => `  ehM checked: day ${ctx.raw.y}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          type: 'category',
+          labels: cycleNums,
+          title: { display: true, text: 'cycle no.', color: '#b0a89e', font: { family: "'DM Mono', monospace", size: 11 }, padding: { top: 8 } },
+          ticks: { color: '#b0a89e', font: { family: "'DM Mono', monospace", size: 10 }, autoSkip: false, maxRotation: 0 },
+          grid: { color: 'rgba(0,0,0,0.04)' },
+        },
+        y: {
+          title: { display: true, text: 'ehM cycle day', color: '#b0a89e', font: { family: "'DM Mono', monospace", size: 11 } },
+          min: minDay,
+          max: maxDay,
+          ticks: { color: '#b0a89e', font: { family: "'DM Mono', monospace", size: 10 }, stepSize: 1, callback: v => Number.isInteger(v) ? v : '' },
+          grid: { color: 'rgba(0,0,0,0.04)' },
+        },
+      },
+    },
+  });
+}
+
+function buildStats(cycleNums, ehmData) {
+  const grid = document.getElementById('stats-grid');
+  const cyclesWithEhm = cycleNums.filter(cn => (ehmData[cn] || []).length > 0).slice().reverse();
+  grid.innerHTML = '';
+  grid.style.display = 'grid';
+  cyclesWithEhm.slice(0, 6).forEach((cn, i) => {
+    const ehmDays = (ehmData[cn] || []).slice().sort((a, b) => a - b);
+    const card = document.createElement('div');
+    card.className = `stat-card ${CARD_CLASSES[i % CARD_CLASSES.length]}`;
+    card.innerHTML = `
+      <p class="stat-label">${i === 0 ? 'latest checked' : 'previous'}</p>
+      <p class="stat-cycle">cycle ${cn}</p>
+      <p class="stat-temps">ehM checked on day ${ehmDays.join(', ')}</p>`;
+    grid.appendChild(card);
+  });
+}
+
+async function main() {
+  try {
+    const res = await fetch(`cycle-data.json?v=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`Could not load cycle-data.json (${res.status}). Has the GitHub Action run yet?`);
+    const json = await res.json();
+    if (json.updated && json.updated === lastUpdated) return;
+    lastUpdated = json.updated || null;
+
+    const cycleNums = sortedCycleNums(json);
+    const ehmData = ehmByCycle(json);
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('error').style.display = 'none';
+    document.getElementById('chart-area').style.display = 'block';
+    buildChart(cycleNums, ehmData);
+    buildStats(cycleNums, ehmData);
+    hasLoaded = true;
+    if (json.updated) {
+      const d = new Date(json.updated);
+      document.getElementById('updated-time').textContent = `data refreshed ${d.toLocaleString('de-DE', {dateStyle:'medium',timeStyle:'short'})}`;
+    }
+  } catch (err) {
+    if (hasLoaded) return;
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('error').style.display = 'block';
+    document.getElementById('error').innerHTML = `<strong>Could not load data</strong>${err.message}`;
+  }
+}
+main();
+setInterval(main, DATA_POLL_MS);
+</script>
+</body>
+</html>
