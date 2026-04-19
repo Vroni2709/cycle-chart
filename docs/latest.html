@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Latest Cycle Temperature</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #faf8f5; --surface: #ffffff; --border: #e8e2da;
+    --text-primary: #1a1510; --text-secondary: #7a6f63; --text-muted: #b0a89e;
+    --accent-1: #8b6f9e; --accent-2: #4a9e7f; --accent-3: #c4734a;
+    --accent-1-soft: rgba(139,111,158,0.12); --accent-2-soft: rgba(74,158,127,0.12); --accent-3-soft: rgba(196,115,74,0.12);
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Mono', monospace; background: var(--bg); color: var(--text-primary); min-height: 100vh; padding: 2rem 1.5rem; }
+  .header { text-align: center; margin-bottom: 2rem; }
+  .header h1 { font-family: 'DM Serif Display', serif; font-size: clamp(1.4rem, 4vw, 2.2rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.1; }
+  .header h1 em { font-style: italic; color: var(--accent-1); }
+  .subtitle { font-size: 0.72rem; color: var(--text-muted); margin-top: 0.4rem; letter-spacing: 0.08em; text-transform: uppercase; }
+  .legend { display: flex; justify-content: center; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1.5rem; align-items: center; }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.7rem; color: var(--text-secondary); letter-spacing: 0.04em; }
+  .legend-ehm { display: flex; align-items: center; gap: 8px; font-size: 0.7rem; color: var(--text-secondary); letter-spacing: 0.04em; border-left: 1px solid var(--border); padding-left: 1.5rem; }
+  .ehm-dot-legend { width: 10px; height: 10px; border-radius: 50%; background: #e8c84a; border: 2px solid #c4a430; flex-shrink: 0; }
+  .chart-container { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem 1.5rem 1rem; }
+  .chart-wrap { position: relative; height: 400px; }
+  .stats-grid { display: grid; grid-template-columns: 1fr; gap: 0.75rem; margin-top: 1rem; }
+  .stat-card { border-radius: 10px; padding: 0.875rem 1rem; border: 1px solid transparent; }
+  .stat-card.c1 { background: var(--accent-1-soft); border-color: rgba(139,111,158,0.2); }
+  .stat-card.c2 { background: var(--accent-2-soft); border-color: rgba(74,158,127,0.2); }
+  .stat-card.c3 { background: var(--accent-3-soft); border-color: rgba(196,115,74,0.2); }
+  .stat-label { font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px; }
+  .stat-cycle { font-family: 'DM Serif Display', serif; font-size: 1.05rem; font-weight: 400; margin-bottom: 4px; }
+  .c1 .stat-cycle { color: var(--accent-1); } .c2 .stat-cycle { color: var(--accent-2); } .c3 .stat-cycle { color: var(--accent-3); }
+  .stat-temps { font-size: 0.68rem; color: var(--text-secondary); line-height: 1.6; }
+  .stat-ehm { font-size: 0.65rem; color: #a08830; margin-top: 4px; }
+  .loading { text-align: center; padding: 4rem 2rem; color: var(--text-muted); font-size: 0.8rem; letter-spacing: 0.06em; }
+  .loading-dots::after { content: ''; animation: dots 1.5s infinite; }
+  @keyframes dots { 0%{content:'.'} 33%{content:'..'} 66%{content:'...'} 100%{content:''} }
+  .error { background: #fff5f5; border: 1px solid #fca5a5; border-radius: 10px; padding: 1.25rem; font-size: 0.78rem; color: #c4574a; line-height: 1.7; }
+  .error strong { display: block; margin-bottom: 0.4rem; }
+  .updated { font-size: 0.62rem; color: var(--text-muted); text-align: right; margin-top: 0.75rem; letter-spacing: 0.04em; }
+  @media (max-width: 480px) { .stats-grid { grid-template-columns: 1fr; } .legend { gap: 0.75rem; } .legend-ehm { border-left: none; padding-left: 0; } }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>basal body <em>temperature</em></h1>
+  <p class="subtitle">latest cycle</p>
+</div>
+<div id="legend" class="legend"></div>
+<div class="chart-container">
+  <div id="loading" class="loading"><span class="loading-dots">loading</span></div>
+  <div id="error" style="display:none" class="error"></div>
+  <div id="chart-area" style="display:none">
+    <div class="chart-wrap">
+      <canvas id="chart" role="img" aria-label="Basal body temperature for the latest cycle by cycle day"></canvas>
+    </div>
+  </div>
+</div>
+<div id="stats-grid" class="stats-grid" style="display:none"></div>
+<p class="updated" id="updated-time"></p>
+
+<script>
+const COLORS = [
+  { line: '#8b6f9e', soft: 'rgba(139,111,158,0.10)', cls: 'c1' },
+  { line: '#4a9e7f', soft: 'rgba(74,158,127,0.08)',  cls: 'c2' },
+  { line: '#c4734a', soft: 'rgba(196,115,74,0.08)',  cls: 'c3' },
+];
+const EHM_COLOR = '#e8c84a', EHM_BORDER = '#c4a430';
+const DATA_POLL_MS = 30000;
+let chartInstance = null;
+let lastUpdated = null;
+let hasLoaded = false;
+
+function buildLegend(cycleNums, ehmData) {
+  const leg = document.getElementById('legend');
+  leg.innerHTML = '';
+  cycleNums.forEach((cn, i) => {
+    const col = COLORS[i];
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    item.innerHTML = `<svg width="32" height="12" viewBox="0 0 32 12">
+      <line x1="0" y1="6" x2="32" y2="6" stroke="${col.line}" stroke-width="${i===0?2.5:2}"/>
+    </svg><span>cycle ${cn}${i===0?' (latest)':''}</span>`;
+    leg.appendChild(item);
+  });
+  const hasEhm = cycleNums.some(cn => (ehmData[cn]||[]).length > 0);
+  if (hasEhm) {
+    const e = document.createElement('div');
+    e.className = 'legend-ehm';
+    e.innerHTML = `<div class="ehm-dot-legend"></div><span>ehM day</span>`;
+    leg.appendChild(e);
+  }
+}
+
+const ehmPlugin = (ehmData, cycleNums, labels) => ({
+  id: 'ehmMarkers',
+  afterDraw(chart) {
+    const ctx = chart.ctx, xA = chart.scales.x, yA = chart.scales.y;
+    cycleNums.forEach((cn, ci) => {
+      (ehmData[cn]||[]).forEach(day => {
+        const idx = labels.indexOf(day);
+        if (idx < 0) return;
+        const x = xA.getPixelForValue(idx);
+        ctx.save();
+        ctx.fillStyle = 'rgba(232,200,74,0.13)';
+        ctx.fillRect(x - 7, yA.top, 14, yA.bottom - yA.top);
+        ctx.strokeStyle = 'rgba(196,164,48,0.5)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3,3]);
+        ctx.beginPath(); ctx.moveTo(x, yA.top); ctx.lineTo(x, yA.bottom); ctx.stroke();
+        ctx.restore();
+        const val = chart.data.datasets[ci].data[idx];
+        if (val !== null && val !== undefined) {
+          const y = yA.getPixelForValue(val);
+          ctx.save();
+          ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI*2);
+          ctx.fillStyle = EHM_COLOR; ctx.strokeStyle = EHM_BORDER; ctx.lineWidth = 2;
+          ctx.fill(); ctx.stroke(); ctx.restore();
+        }
+      });
+    });
+  }
+});
+
+
+function buildChart(data, cycleNums, ehmData) {
+  const maxDay = Math.max(...cycleNums.flatMap(cn => Object.keys(data[cn]).map(Number)));
+  const labels = Array.from({length: maxDay}, (_, i) => i + 1);
+  const allTemps = cycleNums.flatMap(cn => Object.values(data[cn]));
+  const minT = Math.min(...allTemps), maxT = Math.max(...allTemps);
+  const datasets = cycleNums.map((cn, i) => {
+    const col = COLORS[i];
+    return {
+      label: `Cycle ${cn}`,
+      data: labels.map(d => data[cn][String(d)] ?? null),
+      borderColor: col.line,
+      backgroundColor: col.soft,
+      borderWidth: i === 0 ? 2.5 : 2,
+      pointRadius: 0,
+      pointHoverRadius: 6,
+      pointHoverBackgroundColor: col.line,
+      pointHoverBorderColor: 'white',
+      pointHoverBorderWidth: 2,
+      tension: 0.35, fill: false, borderDash: [], spanGaps: false,
+    };
+  });
+
+  if (chartInstance) chartInstance.destroy();
+  chartInstance = new Chart(document.getElementById('chart'), {
+    type: 'line',
+    data: { labels, datasets },
+    plugins: [ehmPlugin(ehmData, cycleNums, labels)],
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1a1510', titleColor: '#faf8f5', bodyColor: '#c8bcb0',
+          padding: 12,
+          titleFont: { family: "'DM Mono', monospace", size: 11 },
+          bodyFont:  { family: "'DM Mono', monospace", size: 11 },
+          callbacks: {
+            title: ctx => `cycle day ${ctx[0].label}`,
+            label: ctx => {
+              const v = ctx.parsed.y;
+              const cn = cycleNums[ctx.datasetIndex];
+              const day = ctx.parsed.x + 1;
+              const ehm = (ehmData[cn]||[]).includes(day) ? '  ✦ ehM' : '';
+              return v !== null ? `  ${ctx.dataset.label}: ${v.toFixed(2)}°C${ehm}` : `  ${ctx.dataset.label}: —`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          title: { display: true, text: 'cycle day', color: '#b0a89e', font: { family: "'DM Mono', monospace", size: 11 }, padding: { top: 8 } },
+          ticks: { color: '#b0a89e', font: { family: "'DM Mono', monospace", size: 10 }, autoSkip: false, maxRotation: 0, callback: (_, i) => (i+1)%2===1 ? i+1 : '' },
+          grid: { color: 'rgba(0,0,0,0.04)' },
+        },
+        y: {
+          title: { display: true, text: 'temp (°C)', color: '#b0a89e', font: { family: "'DM Mono', monospace", size: 11 } },
+          min: parseFloat((minT - 0.15).toFixed(2)),
+          max: parseFloat((maxT + 0.10).toFixed(2)),
+          ticks: { color: '#b0a89e', font: { family: "'DM Mono', monospace", size: 10 }, stepSize: 0.05, callback: v => v.toFixed(2) },
+          grid: { color: 'rgba(0,0,0,0.04)' },
+        },
+      },
+    },
+  });
+}
+
+function buildStats(data, cycleNums, ehmData) {
+  const grid = document.getElementById('stats-grid');
+  grid.innerHTML = ''; grid.style.display = 'grid';
+  cycleNums.forEach((cn, i) => {
+    const temps = Object.values(data[cn]);
+    const avg = (temps.reduce((a,b)=>a+b,0)/temps.length).toFixed(2);
+    const min = Math.min(...temps).toFixed(2), max = Math.max(...temps).toFixed(2);
+    const ehmDays = (ehmData[cn]||[]).sort((a,b)=>a-b);
+    const card = document.createElement('div');
+    card.className = `stat-card ${COLORS[i].cls}`;
+    card.innerHTML = `
+      <p class="stat-label">latest</p>
+      <p class="stat-cycle">cycle ${cn}</p>
+      <p class="stat-temps">avg ${avg}°C<br>range ${min} – ${max}°C<br>${temps.length} days recorded</p>
+      ${ehmDays.length > 0 ? `<p class="stat-ehm">✦ ehM: day ${ehmDays.join(', ')}</p>` : ''}`;
+    grid.appendChild(card);
+  });
+}
+
+async function main() {
+  try {
+    const res = await fetch(`cycle-data.json?v=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`Could not load cycle-data.json (${res.status}). Has the GitHub Action run yet?`);
+    const json = await res.json();
+    if (json.updated && json.updated === lastUpdated) return;
+    lastUpdated = json.updated || null;
+
+    const latestCycle = json.top_cycles?.[0];
+    if (!latestCycle) throw new Error('No cycle data found in cycle-data.json.');
+    const cycleNums = [latestCycle], data = json.data, ehmData = json.ehm || {};
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('error').style.display = 'none';
+    document.getElementById('chart-area').style.display = 'block';
+    buildLegend(cycleNums, ehmData);
+    buildChart(data, cycleNums, ehmData);
+    buildStats(data, cycleNums, ehmData);
+    hasLoaded = true;
+    if (json.updated) {
+      const d = new Date(json.updated);
+      document.getElementById('updated-time').textContent = `data refreshed ${d.toLocaleString('de-DE', {dateStyle:'medium',timeStyle:'short'})}`;
+    }
+  } catch (err) {
+    if (hasLoaded) return;
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('error').style.display = 'block';
+    document.getElementById('error').innerHTML = `<strong>Could not load data</strong>${err.message}`;
+  }
+}
+main();
+setInterval(main, DATA_POLL_MS);
+</script>
+</body>
+</html>
