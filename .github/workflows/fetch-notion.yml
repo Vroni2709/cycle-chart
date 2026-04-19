@@ -1,9 +1,11 @@
 name: Fetch Notion Cycle Data
 
 on:
-  schedule:
-    - cron: '0 5 * * *'   # every day at 6am CET (5am UTC)
-  workflow_dispatch:        # also allows manual trigger from GitHub UI
+  workflow_dispatch:
+
+concurrency:
+  group: fetch-notion-cycle-data
+  cancel-in-progress: true
 
 jobs:
   fetch:
