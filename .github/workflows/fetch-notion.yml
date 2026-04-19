@@ -76,7 +76,7 @@ jobs:
               temp      = get_number("Temperature (°C)")
               ehm       = get_checkbox("ehM")
 
-              if cycle_no and cycle_day is not None and temp is not None:
+              if cycle_no and cycle_day is not None:
                   entries.append({
                       "cycle_no":  cycle_no,
                       "cycle_day": int(cycle_day),
@@ -93,25 +93,29 @@ jobs:
               if cn not in cycles:
                   cycles[cn]   = {}
                   ehm_days[cn] = []
-              cycles[cn][day] = e["temp"]
+              if e["temp"] is not None:
+                  cycles[cn][day] = e["temp"]
               if e["ehm"]:
                   ehm_days[cn].append(e["cycle_day"])
 
-          sorted_nums = sorted(cycles.keys(), key=lambda x: float(x), reverse=True)
-          top3        = sorted_nums[:3]
+          all_cycles       = sorted(ehm_days.keys(), key=lambda x: float(x))
+          temp_cycles      = [cn for cn in all_cycles if cycles.get(cn)]
+          top3             = list(reversed(temp_cycles))[:3]
 
           result = {
               "updated":    datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
               "top_cycles": top3,
+              "all_cycles": all_cycles,
               "data":       {cn: cycles[cn]   for cn in top3},
               "ehm":        {cn: ehm_days[cn] for cn in top3},
+              "all_ehm":    {cn: sorted(ehm_days[cn]) for cn in all_cycles},
           }
 
           os.makedirs("docs", exist_ok=True)
           with open("docs/cycle-data.json", "w") as f:
               json.dump(result, f, indent=2)
 
-          print(f"Saved {len(entries)} entries, cycles: {top3}, ehM: { {cn: ehm_days[cn] for cn in top3} }")
+          print(f"Saved {len(entries)} entries, temp cycles: {top3}, all cycles: {all_cycles}")
           EOF
 
       - name: Commit and push updated data
@@ -119,5 +123,9 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add docs/cycle-data.json
-          git diff --cached --quiet || git commit -m "chore: refresh cycle data $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          git push
+          if git diff --cached --quiet; then
+            echo "No data changes to commit."
+          else
+            git commit -m "chore: refresh cycle data $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            git push
+          fi
